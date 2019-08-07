@@ -94,7 +94,7 @@ internal open class ArrayChannel<E>(
                 // check for receivers that were waiting on empty queue
                 if (size == 0) {
                     loop@ while (true) {
-                        val offerOp = describeTryOffer(element)
+                        val offerOp = describeTryOffer(element, select)
                         val failure = select.performAtomicTrySelect(offerOp)
                         when {
                             failure == null -> { // offered successfully
@@ -195,7 +195,7 @@ internal open class ArrayChannel<E>(
             var replacement: Any? = POLL_FAILED
             if (size == capacity) {
                 loop@ while (true) {
-                    val pollOp = describeTryPoll()
+                    val pollOp = describeTryPoll(select)
                     val failure = select.performAtomicTrySelect(pollOp)
                     when {
                         failure == null -> { // polled successfully
