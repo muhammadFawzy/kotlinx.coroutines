@@ -44,8 +44,8 @@ task removeRedundantFiles(type: Delete) {
 }
 
 task runMonteCarloBasedChannelBenchmark(type : JavaExec) {
-    main = 'montecarlo.MonteCarloBasedBenchmark'
-    classpath sourceSets.main.runtimeClasspath
+    main = 'benchmarks.ChannelProducerConsumerMonteCarloBenchmark'
+    classpath sourceSets.jmh.runtimeClasspath
 }
 
 jmhRunBytecodeGenerator.dependsOn(removeRedundantFiles)
