@@ -1,8 +1,9 @@
 @file:JvmName("ChannelProducerConsumerMonteCarloBenchmark")
 
-package benchmarks
+package channel
 
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import java.io.Closeable
 import java.io.PrintWriter
 import java.nio.file.Files
@@ -65,7 +66,18 @@ val DISPATCHER_TYPES = listOf(DispatcherTypes.FORK_JOIN, DispatcherTypes.EXPERIM
 const val OUTPUT = "out/montecarlo.out"
 
 /**
- * todo: how this benchmark works
+ * This benchmark tests the performance of different types of channel as working queues.
+ *
+ * First it chooses all parameters that we want to test in this benchmark, a benchmark configuration.
+ * Each iteration creates N producers and M consumers, M + N = current count of threads. For each producer and consumer
+ * workload is randomly chosen (workload may be balanced or unbalanced according to the benchmark configuration). Then
+ * the benchmark starts all producers and consumers coroutines. Producers send to a channel messages and then do
+ * some work on CPU, consumers receive messages from the channel and do some work on CPU. Total amount of sent messages
+ * is ~ [APPROXIMATE_BATCH_SIZE]. The main thread waits for all coroutines to stop, then measures the execution time of
+ * the current iteration.
+ *
+ * The benchmark stops execution the current benchmark configuration if execution times became stable and stopped changing
+ * drastically.
  */
 fun main() {
     Files.createDirectories(Paths.get(OUTPUT).parent)
@@ -285,4 +297,16 @@ enum class BenchmarkLoadMode {
 enum class DispatcherTypes(val create: (parallelism: Int) -> CoroutineDispatcher) {
     FORK_JOIN({ parallelism -> java.util.concurrent.ForkJoinPool(parallelism).asCoroutineDispatcher() }),
     EXPERIMENTAL({ parallelism -> kotlinx.coroutines.scheduling.ExperimentalCoroutineDispatcher(corePoolSize = parallelism, maxPoolSize = parallelism) })
+}
+
+enum class ChannelCreator(private val capacity: Int) {
+    RENDEZVOUS(Channel.RENDEZVOUS),
+    //    BUFFERED_1(1),
+    BUFFERED_2(2),
+    //    BUFFERED_4(4),
+    BUFFERED_32(32),
+    BUFFERED_128(128),
+    BUFFERED_UNLIMITED(Channel.UNLIMITED);
+
+    fun create(): Channel<Int> = Channel(capacity)
 }
