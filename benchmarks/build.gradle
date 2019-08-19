@@ -44,7 +44,7 @@ task removeRedundantFiles(type: Delete) {
 }
 
 task runInMemoryChatBenchmark(type : JavaExec) {
-    main = 'chat.InMemoryChatBenchmark'
+    main = 'chat.RunBenchmark'
     classpath sourceSets.main.runtimeClasspath
 }
 

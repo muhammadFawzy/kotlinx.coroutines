@@ -26,7 +26,7 @@ val MAX_FRIENDS_PERCENTAGE = listOf(0.2)
 /**
  * Coroutines channels type.
  */
-val CHANNEL_TYPES = listOf(ChannelType.BUFFERED_DEFAULT, ChannelType.RENDEZVOUS, ChannelType.UNLIMITED, ChannelType.BUFFERED_1, ChannelType.BUFFERED_16, ChannelType.BUFFERED_256)
+val CHANNEL_TYPES = listOf(ChannelType.UNLIMITED, ChannelType.BUFFERED_DEFAULT, ChannelType.RENDEZVOUS, ChannelType.BUFFERED_1, ChannelType.BUFFERED_16, ChannelType.BUFFERED_256)
 /**
  * The average amount work that will be executed on CPU.
  */
@@ -38,7 +38,7 @@ val BENCHMARK_MODE = listOf(BenchmarkModes.USER_WITH_FRIENDS, BenchmarkModes.USE
 /**
  * Coroutines dispatcher types
  */
-val DISPATCHER_TYPES = listOf(DispatcherTypes.FORK_JOIN, DispatcherTypes.EXPERIMENTAL)
+val DISPATCHER_TYPES = listOf(DispatcherTypes.EXPERIMENTAL, DispatcherTypes.FORK_JOIN)
 
 // Benchmark configuration that are not shown in the output file
 
@@ -88,7 +88,7 @@ class BenchmarkConfiguration(
     }
 
     fun configurationToString() : String {
-        return "BenchmarkConfiguration(threads=$threads, users=$users, maxFriendsPercentage=$maxFriendsPercentage, channelType=$channelType, averageWork=$averageWork, benchmarkMode=$benchmarkMode, dispatcherType=$dispatcherType)"
+        return "[threads=$threads, users=$users, maxFriendsPercentage=$maxFriendsPercentage, channelType=$channelType, averageWork=$averageWork, benchmarkMode=$benchmarkMode, dispatcherType=$dispatcherType]"
     }
 
     fun toCSV(): String {
@@ -116,7 +116,7 @@ class BenchmarkConfiguration(
         }
 
         fun defaultConfiguration() : BenchmarkConfiguration {
-            return BenchmarkConfiguration(10, 1000, 0.2, ChannelType.RENDEZVOUS,
+            return BenchmarkConfiguration(4, 10000, 0.2, ChannelType.UNLIMITED,
                     80, BenchmarkModes.USER_WITHOUT_FRIENDS, DispatcherTypes.FORK_JOIN)
         }
     }
