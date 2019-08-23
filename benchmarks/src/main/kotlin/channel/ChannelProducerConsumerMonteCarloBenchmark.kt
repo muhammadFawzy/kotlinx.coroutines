@@ -4,6 +4,8 @@ package channel
 
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.selects.select
+import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics
 import java.io.Closeable
 import java.io.PrintWriter
 import java.nio.file.Files
@@ -12,8 +14,6 @@ import java.util.concurrent.Phaser
 import java.util.concurrent.ThreadLocalRandom
 import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.pow
-import kotlin.math.sqrt
 import kotlin.random.Random
 
 /**
@@ -57,6 +57,10 @@ const val ITERATIONS_BETWEEN_THRESHOLD_CHECK = 50
  */
 val BENCHMARK_LOAD_MODE = listOf(BenchmarkLoadMode.WITH_BALANCING, BenchmarkLoadMode.WITHOUT_BALANCING)
 /**
+ * Should select be used in the benchmark or not
+ */
+val BENCHMARK_SELECT_MODE = listOf(BenchmarkSelectMode.WITH_SELECT, BenchmarkSelectMode.WITHOUT_SELECT)
+/**
  * Coroutines dispatcher types
  */
 val DISPATCHER_TYPES = listOf(DispatcherTypes.FORK_JOIN, DispatcherTypes.EXPERIMENTAL)
@@ -85,55 +89,51 @@ fun main() {
 
     val benchmarksConfigurationsNumber = THREADS.size * CHANNEL_CREATORS.size
     var currentConfigurationNumber = 0
+
     val startTime = System.currentTimeMillis()
 
     for (channel in CHANNEL_CREATORS) {
         for (threads in THREADS) {
-            for (mode in BENCHMARK_LOAD_MODE) {
+            for (loadMode in BENCHMARK_LOAD_MODE) {
                 for (dispatcherType in DISPATCHER_TYPES) {
-                    print("\rchannel=$channel threads=$threads mode=$mode dispatcherType=$dispatcherType: warm-up phase... [${eta(currentConfigurationNumber, benchmarksConfigurationsNumber, startTime)}]")
+                    for (selectMode in BENCHMARK_SELECT_MODE) {
+                        val descriptiveStatistics = DescriptiveStatistics()
+                        print("\rchannel=$channel threads=$threads loadMode=$loadMode dispatcherType=$dispatcherType selectMode=$selectMode: warm-up phase... [${eta(currentConfigurationNumber, benchmarksConfigurationsNumber, startTime)}]")
 
-                    repeat(WARM_UP_ITERATIONS) {
-                        run(threads, channel, mode, dispatcherType)
-                    }
-
-                    val runExecutionTimesMs = ArrayList<Long>()
-                    var lastMean = -10000.0
-                    var runIteration = 0
-                    while (true) {
-                        repeat(ITERATIONS_BETWEEN_THRESHOLD_CHECK) {
-                            runIteration++
-                            runExecutionTimesMs += run(threads, channel, mode, dispatcherType)
-                            print("\rchannel=$channel threads=$threads mode=$mode dispatcherType=$dispatcherType iteration=$runIteration result=${runExecutionTimesMs.average().toInt()} std=${computeStandardDeviation(runExecutionTimesMs).toInt()} [${eta(currentConfigurationNumber, benchmarksConfigurationsNumber, startTime)}]")
+                        repeat(WARM_UP_ITERATIONS) {
+                            run(threads, channel, loadMode, selectMode, dispatcherType)
                         }
-                        val curMean = runExecutionTimesMs.average()
-                        if (runIteration >= MAX_ITERATIONS || abs(curMean - lastMean) / curMean < BENCHMARK_RUN_STOP_PERCENTAGE_THRESHOLD) break
-                        lastMean = curMean
-                    }
 
-                    println("\rchannel=$channel threads=$threads mode=$mode dispatcherType=$dispatcherType result=${runExecutionTimesMs.average().toInt()} std=${computeStandardDeviation(runExecutionTimesMs).toInt()} iterations=$runIteration")
-                    out.println("channel=$channel threads=$threads mode=$mode dispatcherType=$dispatcherType result=${runExecutionTimesMs.average().toInt()} std=${computeStandardDeviation(runExecutionTimesMs).toInt()} iterations=$runIteration")
-                    out.flush()
-                    currentConfigurationNumber++
+                        var lastMean = -10000.0
+                        var runIteration = 0
+                        while (true) {
+                            repeat(ITERATIONS_BETWEEN_THRESHOLD_CHECK) {
+                                runIteration++
+                                val executionTimeMs = run(threads, channel, loadMode, selectMode, dispatcherType)
+                                descriptiveStatistics.addValue(executionTimeMs.toDouble())
+                                val result = descriptiveStatistics.getMean().toInt()
+                                val std = descriptiveStatistics.getStandardDeviation().toInt()
+                                val eta = eta(currentConfigurationNumber, benchmarksConfigurationsNumber, startTime)
+                                print("\rchannel=$channel threads=$threads loadMode=$loadMode dispatcherType=$dispatcherType selectMode=$selectMode iteration=$runIteration result=$result std=$std [$eta]")
+                            }
+                            val curMean = descriptiveStatistics.getMean()
+                            if (runIteration >= MAX_ITERATIONS || abs(curMean - lastMean) / curMean < BENCHMARK_RUN_STOP_PERCENTAGE_THRESHOLD) break
+                            lastMean = curMean
+                        }
+
+                        val result = descriptiveStatistics.getMean().toInt()
+                        val std = descriptiveStatistics.getStandardDeviation().toInt()
+                        println("\rchannel=$channel threads=$threads loadMode=$loadMode dispatcherType=$dispatcherType selectMode=$selectMode result=$result std=$std iterations=$runIteration")
+                        out.println("channel=$channel threads=$threads loadMode=$loadMode dispatcherType=$dispatcherType selectMode=$selectMode result=$result std=$std iterations=$runIteration")
+                        out.flush()
+                        currentConfigurationNumber++
+                    }
                 }
             }
         }
     }
 
     out.close()
-}
-
-fun computeStandardDeviation(list: List<Long>): Double {
-    var sum = 0.0
-    var standardDeviation = 0.0
-    for (num in list) {
-        sum += num
-    }
-    val mean = sum / list.size
-    for (num in list) {
-        standardDeviation += (num - mean).pow(2.0)
-    }
-    return sqrt(standardDeviation / list.size)
 }
 
 /**
@@ -151,18 +151,19 @@ fun eta(curIteration: Int, totalIterations: Int, startTime: Long): String {
     return "ETA - $days days, $hours hours,  $minutes minutes"
 }
 
-fun run(threads: Int, channelCreator: ChannelCreator, mode: BenchmarkLoadMode, dispatcherType: DispatcherTypes): Long {
+fun run(threads: Int, channelCreator: ChannelCreator, loadMode: BenchmarkLoadMode, selectMode: BenchmarkSelectMode,
+        dispatcherType: DispatcherTypes): Long {
     // create workload
     val producers = Random.nextInt(1, max(threads, 2))
     val consumers = max(1, threads - producers)
-    val (producerWorks, consumerWorks) = createWorkLoad(producers, consumers, mode)
+    val (producerWorks, consumerWorks) = createWorkLoad(producers, consumers, loadMode)
     val producersDispatcher = dispatcherType.create(producers)
     val consumersDispatcher = dispatcherType.create(consumers)
 
     // start all threads
     val phaser = Phaser(producers + consumers + 1)
-    val startTime = startWork(channelCreator, phaser, producers, producerWorks, producersDispatcher, consumers,
-            consumerWorks, consumersDispatcher)
+    val startTime = startWork(channelCreator, selectMode, phaser, producers, producerWorks, producersDispatcher,
+            consumers, consumerWorks, consumersDispatcher)
 
     // wait until the total work is done
     phaser.arriveAndAwaitAdvance()
@@ -178,10 +179,11 @@ fun run(threads: Int, channelCreator: ChannelCreator, mode: BenchmarkLoadMode, d
     return (endTime - startTime) / 1_000_000 // ms
 }
 
-private fun startWork(channelCreator: ChannelCreator, phaser: Phaser,
+private fun startWork(channelCreator: ChannelCreator, selectMode: BenchmarkSelectMode, phaser: Phaser,
                       producers: Int, producerWorks: List<Int>, producersDispatcher: CoroutineDispatcher,
                       consumers: Int, consumerWorks: List<Int>, consumersDispatcher: CoroutineDispatcher): Long {
     val channel = channelCreator.create()
+    val dummy = if (selectMode == BenchmarkSelectMode.WITH_SELECT) channelCreator.create() else null
     val totalMessagesCount = APPROXIMATE_BATCH_SIZE / (producers * consumers) * (producers * consumers)
     check(totalMessagesCount / producers * producers == totalMessagesCount)
     check(totalMessagesCount / consumers * consumers == totalMessagesCount)
@@ -193,8 +195,7 @@ private fun startWork(channelCreator: ChannelCreator, phaser: Phaser,
         CoroutineScope(producersDispatcher).launch {
             try {
                 repeat(totalMessagesCount / producers) {
-                    channel.send(it)
-                    doWork(work)
+                    produce(channel, dummy, selectMode, it, work)
                 }
             } finally {
                 phaser.arrive()
@@ -208,8 +209,7 @@ private fun startWork(channelCreator: ChannelCreator, phaser: Phaser,
         CoroutineScope(consumersDispatcher).launch {
             try {
                 repeat(totalMessagesCount / consumers) {
-                    channel.receive()
-                    doWork(work)
+                    consume(channel, dummy, selectMode, work)
                 }
             } finally {
                 phaser.arrive()
@@ -219,6 +219,29 @@ private fun startWork(channelCreator: ChannelCreator, phaser: Phaser,
 
     return startTime
 }
+
+private suspend fun produce(workingChannel: Channel<Int>, dummy: Channel<Int>?, withSelect : BenchmarkSelectMode, element: Int, work : Int) {
+    when (withSelect) {
+        BenchmarkSelectMode.WITH_SELECT -> select<Unit> {
+            workingChannel.onSend(element) {}
+            dummy!!.onReceive {}
+        }
+        BenchmarkSelectMode.WITHOUT_SELECT -> workingChannel.send(element)
+    }
+    doWork(work)
+}
+
+private suspend fun consume(workingChannel: Channel<Int>, dummy: Channel<Int>?, withSelect : BenchmarkSelectMode, work : Int) {
+    when (withSelect) {
+        BenchmarkSelectMode.WITH_SELECT -> select<Unit> {
+            workingChannel.onReceive {}
+            dummy!!.onReceive {}
+        }
+        BenchmarkSelectMode.WITHOUT_SELECT -> workingChannel.receive()
+    }
+    doWork(work)
+}
+
 
 fun createWorkLoad(producers: Int, consumers: Int, mode: BenchmarkLoadMode): Pair<List<Int>, List<Int>> {
     return when (mode) {
@@ -292,6 +315,11 @@ private fun doWork(loopSize: Int) {
 enum class BenchmarkLoadMode {
     WITH_BALANCING,
     WITHOUT_BALANCING
+}
+
+enum class BenchmarkSelectMode {
+    WITH_SELECT,
+    WITHOUT_SELECT
 }
 
 enum class DispatcherTypes(val create: (parallelism: Int) -> CoroutineDispatcher) {
