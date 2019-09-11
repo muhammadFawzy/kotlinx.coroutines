@@ -5,89 +5,71 @@
 
 package kotlinx.coroutines.linearizability
 
-import com.devexperts.dxlab.lincheck.*
-import com.devexperts.dxlab.lincheck.annotations.*
-import com.devexperts.dxlab.lincheck.paramgen.*
-import com.devexperts.dxlab.lincheck.strategy.stress.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.internal.*
+import org.jetbrains.kotlinx.lincheck.LinChecker
+import org.jetbrains.kotlinx.lincheck.annotations.OpGroupConfig
+import org.jetbrains.kotlinx.lincheck.annotations.Operation
+import org.jetbrains.kotlinx.lincheck.annotations.Param
+import org.jetbrains.kotlinx.lincheck.paramgen.IntGen
+import org.jetbrains.kotlinx.lincheck.verifier.VerifierState
+import org.jetbrains.kotlinx.lincheck.verifier.quiescent.QuiescentConsistencyVerifier
+import org.junit.runner.RunWith
+import org.junit.runners.Parameterized
 import kotlin.test.*
 
-internal data class Snapshot(val elements: List<Int>, val isClosed: Boolean) {
-    constructor(q: LockFreeTaskQueue<Int>) : this(q.map { it }, q.isClosed())
+@Param(name = "value", gen = IntGen::class)
+internal open class LockFreeTaskQueueWithoutRemoveLCStressTest : VerifierState() {
+    protected val q = LockFreeTaskQueue<Int>(singleConsumer = singleConsumer)
+
+    @Operation
+    fun close() = q.close()
+
+    @Operation
+    fun addLast(@Param(name = "value") value: Int) = q.addLast(value)
+
+    override fun extractState() = q.map { it } to  q.isClosed()
+
+    @Test
+    fun test() {
+        LCStressOptionsDefault().also {
+            LinChecker.check(LockFreeTaskQueueWithoutRemoveLCStressTest::class.java, it)
+        }
+    }
+}
+
+internal class MCLockFreeTaskQueueWithRemoveLCStressTest : LockFreeTaskQueueWithoutRemoveLCStressTest() {
+    @Operation
+    fun removeFirstOrNull() = q.removeFirstOrNull()
 }
 
 @OpGroupConfig.OpGroupConfigs(OpGroupConfig(name = "consumer", nonParallel = true))
-@Param(name = "value", gen = IntGen::class, conf = "1:3")
-class SCLockFreeTaskQueueLCStressTest : LockFreeTaskQueueLCTestBase() {
-    private val q: LockFreeTaskQueue<Int> = LockFreeTaskQueue(singleConsumer = true)
+internal class SCLockFreeTaskQueueWithRemoveLCStressTest : LockFreeTaskQueueWithoutRemoveLCStressTest() {
+    @Operation(group = "consumer")
+    fun removeFirstOrNull() = q.removeFirstOrNull()
+}
 
-    @Operation
-    fun close() = q.close()
+@RunWith(Parameterized::class)
+class LockFreeTaskQueueLCStressTestRunner(sc: Boolean) {
+    companion object {
+        @JvmStatic
+        @Parameterized.Parameters(name = "singleConsumer={0}")
+        fun parameters() = listOf(true, false).map { arrayOf(it) }
+    }
 
-    @Operation
-    fun addLast(@Param(name = "value") value: Int) = q.addLast(value)
-
-    /**
-     * Note that removeFirstOrNull is not linearizable w.r.t. to addLast, so here
-     * we test only linearizability of close.
-     */
-//    @Operation(group = "consumer")
-//    fun removeFirstOrNull() = q.removeFirstOrNull()
+    init {
+        singleConsumer = sc
+    }
 
     @Test
-    fun testSC() = linTest()
-
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as SCLockFreeTaskQueueLCStressTest
-
-        return Snapshot(q) == Snapshot(other.q)
-    }
-
-    override fun hashCode(): Int = Snapshot(q).hashCode()
-}
-
-@Param(name = "value", gen = IntGen::class, conf = "1:3")
-class MCLockFreeTaskQueueLCStressTest : LockFreeTaskQueueLCTestBase() {
-    private val q: LockFreeTaskQueue<Int> = LockFreeTaskQueue(singleConsumer = false)
-
-    @Operation
-    fun close() = q.close()
-
-    @Operation
-    fun addLast(@Param(name = "value") value: Int) = q.addLast(value)
-
-    /**
-     * Note that removeFirstOrNull is not linearizable w.r.t. to addLast, so here
-     * we test only linearizability of close.
-     */
-//    @Operation(group = "consumer")
-//    fun removeFirstOrNull() = q.removeFirstOrNull()
-
-    @Test
-    fun testMC() = linTest()
-
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as MCLockFreeTaskQueueLCStressTest
-
-        return Snapshot(q) == Snapshot(other.q)
-    }
-
-    override fun hashCode(): Int = Snapshot(q).hashCode()
-}
-
-open class LockFreeTaskQueueLCTestBase : TestBase() {
-    fun linTest() {
-        val options = StressOptions()
-            .iterations(100 * stressTestMultiplierSqrt)
-            .invocationsPerIteration(1000 * stressTestMultiplierSqrt)
-            .threads(2)
-        LinChecker.check(this::class.java, options)
+    fun test() {
+        val testClass = if (singleConsumer) SCLockFreeTaskQueueWithRemoveLCStressTest::class.java
+                        else MCLockFreeTaskQueueWithRemoveLCStressTest::class.java
+        LCStressOptionsDefault()
+            .verifier(QuiescentConsistencyVerifier::class.java)
+            .actorsPerThread(if (isStressTest) 3 else 2)
+            .also { LinChecker.check(testClass, it) }
     }
 }
+
+private var singleConsumer = false
