@@ -10,11 +10,10 @@ import kotlin.random.Random
 import kotlin.test.assertEquals
 
 class SegmentQueueTest {
-
     @Test
     fun simpleTest() {
         val q = SegmentBasedQueue<Int>()
-        assertEquals( 1, q.numberOfSegments)
+        assertEquals(1, q.numberOfSegments)
         assertEquals(null, q.dequeue())
         q.enqueue(1)
         assertEquals(1, q.numberOfSegments)

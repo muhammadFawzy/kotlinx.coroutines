@@ -3,22 +3,23 @@
  */
 @file:Suppress("unused")
 
-package kotlinx.coroutines.internal
+package kotlinx.coroutines.linearizability
 
-import kotlinx.coroutines.LCStressOptionsDefault
-import org.jetbrains.kotlinx.lincheck.LinChecker
+import kotlinx.coroutines.*
+import kotlinx.coroutines.internal.SegmentBasedQueue
+import org.jetbrains.kotlinx.lincheck.annotations.*
 import org.jetbrains.kotlinx.lincheck.annotations.Operation
-import org.jetbrains.kotlinx.lincheck.annotations.Param
-import org.jetbrains.kotlinx.lincheck.paramgen.IntGen
-import org.jetbrains.kotlinx.lincheck.verifier.VerifierState
-import org.junit.Test
+import org.jetbrains.kotlinx.lincheck.paramgen.*
+import org.jetbrains.kotlinx.lincheck.verifier.*
+import org.junit.*
 
+@Param(name = "value", gen = IntGen::class, conf = "1:5")
 class SegmentQueueLCStressTest : VerifierState() {
     private val q = SegmentBasedQueue<Int>()
 
     @Operation
-    fun add(@Param(gen = IntGen::class) x: Int) {
-        q.enqueue(x)
+    fun add(@Param(name = "value") value: Int) {
+        q.enqueue(value)
     }
 
     @Operation
@@ -35,7 +36,5 @@ class SegmentQueueLCStressTest : VerifierState() {
     }
 
     @Test
-    fun test() {
-        LCStressOptionsDefault().also { LinChecker.check(this.javaClass, it) }
-    }
+    fun test() = LCStressOptionsDefault().check(this::class)
 }

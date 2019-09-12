@@ -7,39 +7,44 @@ package kotlinx.coroutines.linearizability
 
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
-import org.jetbrains.kotlinx.lincheck.Actor
-import org.jetbrains.kotlinx.lincheck.CTestConfiguration
-import org.jetbrains.kotlinx.lincheck.CTestStructure
-import org.jetbrains.kotlinx.lincheck.LinChecker
+import kotlinx.coroutines.channels.TestChannelKind.*
+import kotlinx.coroutines.selects.*
+import org.jetbrains.kotlinx.lincheck.*
+import org.jetbrains.kotlinx.lincheck.annotations.*
 import org.jetbrains.kotlinx.lincheck.annotations.Operation
-import org.jetbrains.kotlinx.lincheck.annotations.Param
-import org.jetbrains.kotlinx.lincheck.execution.ExecutionGenerator
-import org.jetbrains.kotlinx.lincheck.execution.ExecutionScenario
-import org.jetbrains.kotlinx.lincheck.paramgen.IntGen
-import org.jetbrains.kotlinx.lincheck.strategy.stress.StressOptions
-import org.jetbrains.kotlinx.lincheck.verifier.VerifierState
+import org.jetbrains.kotlinx.lincheck.execution.*
+import org.jetbrains.kotlinx.lincheck.paramgen.*
+import org.jetbrains.kotlinx.lincheck.strategy.stress.*
+import org.jetbrains.kotlinx.lincheck.verifier.*
 import org.junit.*
-import org.junit.runner.RunWith
-import org.junit.runners.Parameterized
-import kotlin.reflect.jvm.javaMethod
+import org.junit.runner.*
+import org.junit.runners.*
+import kotlin.reflect.jvm.*
 
+@Param.Params(
+    Param(name = "value", gen = IntGen::class, conf = "1:5"),
+    Param(name = "closeToken", gen = IntGen::class, conf = "1:3")
+)
 class ChannelsLCStressTestImpl: VerifierState() {
-    companion object {
-        var capacity = Integer.MIN_VALUE
-    }
-
-    private val c = Channel<Int>(capacity)
+    private val c = channelKind.create()
 
     @Operation
-    suspend fun send(@Param(gen = IntGen::class) value: Int) = try {
+    suspend fun send(@Param(name = "value") value: Int) = try {
         c.send(value)
     } catch (e : NumberedCancellationException) {
         e.testResult
     }
 
     @Operation
-    fun offer(@Param(gen = IntGen::class) value: Int) = try {
+    fun offer(@Param(name = "value") value: Int) = try {
         c.offer(value)
+    } catch (e : NumberedCancellationException) {
+        e.testResult
+    }
+
+    @Operation
+    suspend fun sendViaSelect(@Param(name = "value") value: Int) = try {
+        select<Unit> { c.onSend(value) {} }
     } catch (e : NumberedCancellationException) {
         e.testResult
     }
@@ -59,17 +64,28 @@ class ChannelsLCStressTestImpl: VerifierState() {
     }
 
     @Operation
-    fun close(@Param(gen = IntGen::class) token: Int) = c.close(NumberedCancellationException(token))
+    suspend fun receiveViaSelect() = try {
+        select<Int> { c.onReceive { it } }
+    } catch (e : NumberedCancellationException) {
+        e.testResult
+    }
 
-//    TODO: this operation should be (and can be!) linearizable, but is not
-//    @Operation
-    fun cancel(@Param(gen = IntGen::class) token: Int) = c.cancel(NumberedCancellationException(token))
+    @Operation
+    fun close(@Param(name = "closeToken") token: Int) = c.close(NumberedCancellationException(token))
+
+    // TODO: this operation should be (and can be!) linearizable, but is not
+    // @Operation
+    fun cancel(@Param(name = "closeToken") token: Int) = c.cancel(NumberedCancellationException(token))
 
     @Operation
     fun isClosedForReceive() = c.isClosedForReceive
 
     @Operation
     fun isClosedForSend() = c.isClosedForSend
+
+    // TODO: this operation should be (and can be!) linearizable, but is not
+    // @Operation
+    fun isEmpty() = c.isEmpty
 
     override fun extractState(): Any {
         val state = mutableListOf<Any>()
@@ -82,37 +98,37 @@ class ChannelsLCStressTestImpl: VerifierState() {
     }
 }
 
+private lateinit var channelKind: TestChannelKind
+
 private class NumberedCancellationException(number: Int): CancellationException() {
     val testResult = "Closed($number)"
 }
 
 @RunWith(Parameterized::class)
-class ChannelsLCStressTest(val capacity: Int): TestBase() {
+class ChannelsLCStressTest(kind: TestChannelKind): TestBase() {
     companion object {
         @JvmStatic
-        @Parameterized.Parameters(name = "capacity={0}")
-        fun parameters() = listOf(Channel.RENDEZVOUS, 1, 2, 4, Channel.UNLIMITED, Channel.CONFLATED).map { arrayOf(it) }
+        @Parameterized.Parameters(name = "{0}")
+        fun parameters() = listOf(RENDEZVOUS, ARRAY_1, ARRAY_2, ARRAY_10, LINKED_LIST, CONFLATED)
+        // TODO: ChannelViaBroadcast options fail, should be fixed
+        // fun parameters() = TestChannelKind.values().map { arrayOf(it) }
     }
 
     init {
-        ChannelsLCStressTestImpl.capacity = this.capacity
+        channelKind = kind
     }
 
     @Test
-    fun test() {
-        LCStressOptionsDefault()
-            .actorsBefore(0)
-            .also { LinChecker.check(ChannelsLCStressTestImpl::class.java, it) }
-    }
+    fun test() = LCStressOptionsDefault()
+        .actorsBefore(0)
+        .check(ChannelsLCStressTestImpl::class)
 
     @Test
-    fun testClose() {
-        StressOptions()
-            .iterations(1)
-            .invocationsPerIteration(100_000 * stressTestMultiplier)
-            .executionGenerator(CloseTestScenarioGenerator::class.java)
-            .also { LinChecker.check(ChannelsLCStressTestImpl::class.java, it) }
-    }
+    fun testClose() = StressOptions()
+        .iterations(1)
+        .invocationsPerIteration(100_000 * stressTestMultiplier)
+        .executionGenerator(CloseTestScenarioGenerator::class.java)
+        .check(ChannelsLCStressTestImpl::class)
 }
 
 class CloseTestScenarioGenerator(testCfg: CTestConfiguration, testStructure: CTestStructure): ExecutionGenerator(testCfg, testStructure) {
@@ -130,7 +146,7 @@ class CloseTestScenarioGenerator(testCfg: CTestConfiguration, testStructure: CTe
                 ),
                 listOf(
                     Actor(ChannelsLCStressTestImpl::close.javaMethod!!, listOf(1), emptyList()),
-                    Actor(ChannelsLCStressTestImpl::close.javaMethod!!, listOf(1), emptyList())
+                    Actor(ChannelsLCStressTestImpl::close.javaMethod!!, listOf(2), emptyList())
                 )
             ),
             emptyList()

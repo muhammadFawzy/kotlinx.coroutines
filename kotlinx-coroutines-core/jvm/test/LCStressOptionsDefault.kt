@@ -3,7 +3,9 @@
  */
 package kotlinx.coroutines
 
-import org.jetbrains.kotlinx.lincheck.strategy.stress.StressOptions
+import org.jetbrains.kotlinx.lincheck.*
+import org.jetbrains.kotlinx.lincheck.strategy.stress.*
+import kotlin.reflect.*
 
 class LCStressOptionsDefault : StressOptions() {
     init {
@@ -13,3 +15,5 @@ class LCStressOptionsDefault : StressOptions() {
         actorsPerThread(if (isStressTest) 5 else 2)
     }
 }
+
+fun Options<*,*>.check(testClass: KClass<*>) = LinChecker.check(testClass.java, this)
