@@ -2,10 +2,11 @@
  * Copyright 2016-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license.
  */
 
-package benchmarks.actors
+package benchmarks.scheduler.actors
 
 import benchmarks.*
-import benchmarks.actors.StatefulActorBenchmark.*
+import benchmarks.akka.*
+import benchmarks.scheduler.actors.StatefulActorBenchmark.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
 import org.openjdk.jmh.annotations.*
@@ -60,7 +61,7 @@ open class ConcurrentStatefulActorBenchmark : ParametrizedDispatcherBase() {
     @Param("1024", "8192", "262144")
     var stateSize: Int = -1
 
-    @Param("fjp", "ftp_1", "ftp_8", "experimental")
+    @Param("fjp", "ftp_1", "scheduler")
     override var dispatcher: String = "fjp"
 
     @Benchmark

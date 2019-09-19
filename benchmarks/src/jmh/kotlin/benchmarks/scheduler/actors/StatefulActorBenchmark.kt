@@ -2,9 +2,10 @@
  * Copyright 2016-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license.
  */
 
-package benchmarks.actors
+package benchmarks.scheduler.actors
 
 import benchmarks.*
+import benchmarks.akka.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
 import org.openjdk.jmh.annotations.*
@@ -40,7 +41,7 @@ open class StatefulActorBenchmark : ParametrizedDispatcherBase() {
 
     data class Letter(val message: Any, val sender: Channel<Letter>)
 
-    @Param("fjp", "ftp_1", "ftp_8", "experimental")
+    @Param("fjp", "ftp_1", "ftp_8", "scheduler")
     override var dispatcher: String = "fjp"
 
     @Benchmark
