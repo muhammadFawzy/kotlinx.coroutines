@@ -5,15 +5,14 @@
 package benchmarks
 
 import ChannelCreator
-import ChannelProducerConsumerBenchmarkWorker
+import ChannelProducerConsumerBenchmarkIteration
 import DispatcherCreator
+import doGeomDistrWork
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.InternalCoroutinesApi
 import kotlinx.coroutines.selects.select
 import org.openjdk.jmh.annotations.*
-import org.openjdk.jmh.infra.Blackhole
 import java.lang.Integer.max
-import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.TimeUnit
 
 
@@ -51,13 +50,12 @@ open class ChannelProducerConsumerBenchmark {
 //    @Param("1", "2", "4", "8", "16", "32", "64", "96") // Google Cloud
     private var _4_parallelism: Int = 0
 
-    private lateinit var channelProducerConsumerBenchmarkWorker: ChannelProducerConsumerBenchmarkWorker
+    private lateinit var dispatcher: CoroutineDispatcher
 
     @InternalCoroutinesApi
     @Setup
     fun setup() {
-        val dispatcher = _0_dispatcher.create(_4_parallelism)
-        channelProducerConsumerBenchmarkWorker = ChannelProducerConsumerBenchmarkWorkerJMH(_3_withSelect, dispatcher, _1_channel)
+        dispatcher = _0_dispatcher.create(_4_parallelism)
     }
 
     @Benchmark
@@ -65,26 +63,32 @@ open class ChannelProducerConsumerBenchmark {
         if (_2_coroutines != 0) return
         val producers = max(1, _4_parallelism - 1)
         val consumers = 1
-        channelProducerConsumerBenchmarkWorker.run(producers, consumers, APPROX_BATCH_SIZE)
+        val iterationJMH = ChannelProducerConsumerBenchmarkIterationJMH(_3_withSelect, dispatcher, _1_channel, producers,
+                consumers, APPROX_BATCH_SIZE)
+        iterationJMH.run()
     }
 
     @Benchmark
     fun mpmc() {
         val producers = if (_2_coroutines == 0) (_4_parallelism + 1) / 2 else _2_coroutines / 2
         val consumers = producers
-        channelProducerConsumerBenchmarkWorker.run(producers, consumers, APPROX_BATCH_SIZE)
+        val iterationJMH = ChannelProducerConsumerBenchmarkIterationJMH(_3_withSelect, dispatcher, _1_channel, producers,
+                consumers, APPROX_BATCH_SIZE)
+        iterationJMH.run()
     }
 }
 
-private const val WORK_MIN = 50L
-private const val WORK_MAX = 100L
+private const val WORK = 40
 private const val APPROX_BATCH_SIZE = 100000
 
-class ChannelProducerConsumerBenchmarkWorkerJMH(withSelect: Boolean,
-                                                dispatcher: CoroutineDispatcher,
-                                                channelCreator: ChannelCreator)
-    : ChannelProducerConsumerBenchmarkWorker(withSelect, dispatcher, dispatcher, channelCreator) {
-    override fun doProducerWork(coroutineNumber: Int) = Blackhole.consumeCPU(ThreadLocalRandom.current().nextLong(WORK_MIN, WORK_MAX))
+class ChannelProducerConsumerBenchmarkIterationJMH(withSelect: Boolean,
+                                                   dispatcher: CoroutineDispatcher,
+                                                   channelCreator: ChannelCreator,
+                                                   producers: Int,
+                                                   consumers: Int,
+                                                   approximateBatchSize: Int)
+    : ChannelProducerConsumerBenchmarkIteration(withSelect, dispatcher, channelCreator, producers, consumers, approximateBatchSize) {
+    override fun doProducerWork(coroutineNumber: Int) = doGeomDistrWork(WORK)
 
-    override fun doConsumerWork(coroutineNumber: Int) = Blackhole.consumeCPU(ThreadLocalRandom.current().nextLong(WORK_MIN, WORK_MAX))
+    override fun doConsumerWork(coroutineNumber: Int) = doGeomDistrWork(WORK)
 }

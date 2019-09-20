@@ -79,6 +79,6 @@ dependencies {
 }
 
 task runChannelProducerConsumerMonteCarloBenchmark(type : JavaExec) {
-    main = 'channel.ChannelProducerConsumerMonteCarloBenchmark'
+    main = 'benchmarks.channel.ChannelProducerConsumerMonteCarloBenchmark'
     classpath sourceSets.jmh.runtimeClasspath
 }

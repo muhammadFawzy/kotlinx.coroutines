@@ -11,18 +11,20 @@ import kotlinx.coroutines.selects.select
 import java.util.concurrent.ForkJoinPool
 import java.util.concurrent.Phaser
 
-abstract class ChannelProducerConsumerBenchmarkWorker(private val withSelect: Boolean,
-                                                      private val producerDispatcher: CoroutineDispatcher,
-                                                      private val consumerDispatcher: CoroutineDispatcher,
-                                                      private val channelCreator: ChannelCreator) {
+abstract class ChannelProducerConsumerBenchmarkIteration(private val withSelect: Boolean,
+                                                         private val dispatcher: CoroutineDispatcher,
+                                                         private val channelCreator: ChannelCreator,
+                                                         private val producers: Int,
+                                                         private val consumers: Int,
+                                                         private val approximateBatchSize: Int) {
     private var channel: Channel<Int> = channelCreator.create()
 
-    fun run(producers: Int, consumers: Int, approximateBatchSize : Int) {
+    fun run() {
         val totalMessagesCount = approximateBatchSize / (producers * consumers) * (producers * consumers)
         val phaser = Phaser(producers + consumers + 1)
         // Run producers
         repeat(producers) { coroutineNumber ->
-            GlobalScope.launch(producerDispatcher) {
+            GlobalScope.launch(dispatcher) {
                 val dummy = if (withSelect) channelCreator.create() else null
                 repeat(totalMessagesCount / producers) {
                     produce(it, dummy, coroutineNumber)
@@ -32,7 +34,7 @@ abstract class ChannelProducerConsumerBenchmarkWorker(private val withSelect: Bo
         }
         // Run consumers
         repeat(consumers) { coroutineNumber ->
-            GlobalScope.launch(consumerDispatcher) {
+            GlobalScope.launch(dispatcher) {
                 val dummy = if (withSelect) channelCreator.create() else null
                 repeat(totalMessagesCount / consumers) {
                     consume(dummy, coroutineNumber)
