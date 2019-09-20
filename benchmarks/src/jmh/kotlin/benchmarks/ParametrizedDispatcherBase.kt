@@ -29,7 +29,7 @@ abstract class ParametrizedDispatcherBase : CoroutineScope {
     open fun setup() {
         coroutineContext = when {
             dispatcher == "fjp" -> ForkJoinPool.commonPool().asCoroutineDispatcher()
-            dispatcher == "experimental" -> {
+            dispatcher == "scheduler" -> {
                 ExperimentalCoroutineDispatcher(CORES_COUNT).also { closeable = it }
             }
             dispatcher.startsWith("ftp") -> {
