@@ -53,7 +53,7 @@ open class StatefulAsyncBenchmark : ParametrizedDispatcherBase() {
     @Param("1", "8", "16")
     var jobsCount = 1
 
-    @Param("fjp", "ftp_1", "ftp_8")
+    @Param("fjp", "ftp_1", "dispatcher")
     override var dispatcher: String = "fjp"
 
     @Volatile
