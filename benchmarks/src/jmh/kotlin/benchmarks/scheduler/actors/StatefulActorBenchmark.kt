@@ -39,7 +39,7 @@ import java.util.concurrent.*
 @State(Scope.Benchmark)
 open class StatefulActorBenchmark : ParametrizedDispatcherBase() {
 
-    data class Letter(val message: Any, val sender: Channel<Letter>)
+    data class Letter(val message: Any, val sender: SendChannel<Letter>)
 
     @Param("fjp", "ftp_1", "ftp_8", "scheduler")
     override var dispatcher: String = "fjp"
