@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license.
+ * Copyright 2016-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license.
  */
 
 package kotlinx.coroutines.internal
@@ -67,7 +67,6 @@ class LockFreeLinkedListShortStressTest : TestBase() {
                 while (System.currentTimeMillis() < deadline) {
                     val node = list.removeFirstOrNull()
                     if (node != null) removed.incrementAndGet()
-
                 }
                 completedRemover.incrementAndGet()
             }
@@ -84,6 +83,6 @@ class LockFreeLinkedListShortStressTest : TestBase() {
         assertEquals(missed.get(), removed.get())
         assertTrue(undone.get() > 0)
         assertTrue(missed.get() > 0)
-        list.validate()
+        list.validate(stress = true)
     }
 }

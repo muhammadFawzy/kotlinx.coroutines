@@ -103,7 +103,7 @@ class LockFreeLinkedListAtomicLFStressTest : TestBase() {
         assertEquals(missed.get(), removed.get())
         assertTrue(undone.get() > 0)
         assertTrue(missed.get() > 0)
-        lists.forEach { it.validate() }
+        lists.forEach { it.validate(stress = true) }
     }
 
     private fun addLastOp(list: LockFreeLinkedListHead, node: IntNode) {
