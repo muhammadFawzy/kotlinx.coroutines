@@ -81,34 +81,33 @@ private const val OUTPUT = "out/resultsProdCons.csv"
  */
 fun main() {
     Files.createDirectories(Paths.get(OUTPUT).parent)
-    val out = PrintWriter(OUTPUT)
-    out.println("channel,threads,withBalancing,dispatcherType,withSelect,result,std,iterations")
+    PrintWriter(OUTPUT).use { pw ->
+        pw.println("channel,threads,withBalancing,dispatcherType,withSelect,result,std,iterations")
 
-    val benchmarksConfigurationsNumber = THREADS.size * ChannelCreator.values().size
-    var currentConfigurationNumber = 0
-    val startTime = System.currentTimeMillis()
+        val benchmarksConfigurationsNumber = THREADS.size * ChannelCreator.values().size
+        var currentConfigurationNumber = 0
+        val startTime = System.currentTimeMillis()
 
-    for (channel in ChannelCreator.values()) {
-        for (threads in THREADS) {
-            for (withBalancing in WITH_BALANCING) {
-                for (dispatcherType in DispatcherCreator.values()) {
-                    for (withSelect in WITH_SELECT) {
-                        print("\rchannel=$channel threads=$threads withBalancing=$withBalancing dispatcherType=$dispatcherType withSelect=$withSelect: warm-up phase... [${eta(currentConfigurationNumber, benchmarksConfigurationsNumber, startTime)}]")
+        for (channel in ChannelCreator.values()) {
+            for (threads in THREADS) {
+                for (withBalancing in WITH_BALANCING) {
+                    for (dispatcherType in DispatcherCreator.values()) {
+                        for (withSelect in WITH_SELECT) {
+                            print("\rchannel=$channel threads=$threads withBalancing=$withBalancing dispatcherType=$dispatcherType withSelect=$withSelect: warm-up phase... [${eta(currentConfigurationNumber, benchmarksConfigurationsNumber, startTime)}]")
 
-                        repeat(WARM_UP_ITERATIONS) {
-                            runIteration(threads, channel, withBalancing, withSelect, dispatcherType)
-                        }
+                            repeat(WARM_UP_ITERATIONS) {
+                                runIteration(threads, channel, withBalancing, withSelect, dispatcherType)
+                            }
 
-                        runMonteCarlo(threads, channel, withBalancing, withSelect, dispatcherType, out)
+                            runMonteCarlo(threads, channel, withBalancing, withSelect, dispatcherType, pw)
                             { eta(currentConfigurationNumber, benchmarksConfigurationsNumber, startTime) }
-                        currentConfigurationNumber++
+                            currentConfigurationNumber++
+                        }
                     }
                 }
             }
         }
     }
-
-    out.close()
 }
 
 private fun runMonteCarlo(threads: Int,
@@ -116,7 +115,7 @@ private fun runMonteCarlo(threads: Int,
                           withBalancing: Boolean,
                           withSelect: Boolean,
                           dispatcherType: DispatcherCreator,
-                          out: PrintWriter,
+                          pw: PrintWriter,
                           generateEta : () -> String) {
     val runExecutionTimesMs = ArrayList<Long>()
     var lastMean = -10000.0
@@ -138,8 +137,8 @@ private fun runMonteCarlo(threads: Int,
     val result = runExecutionTimesMs.average().toInt()
     val std = runExecutionTimesMs.standardDeviation().toInt()
     println("\rchannel=$channel threads=$threads withBalancing=$withBalancing dispatcherType=$dispatcherType withSelect=$withSelect result=$result std=$std iterations=$runIteration")
-    out.println("$channel,$threads,$withBalancing,$dispatcherType,$withSelect,$result,$std,$runIteration")
-    out.flush()
+    pw.println("$channel,$threads,$withBalancing,$dispatcherType,$withSelect,$result,$std,$runIteration")
+    pw.flush()
 }
 
 /**
